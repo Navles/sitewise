@@ -8,6 +8,7 @@ import { WebRvizConfiguration } from './components/WebRvizConfiguration';
 import { UploadModal } from './components/UploadModal';
 import { BuildingEditor } from './components/BuildingEditor';
 import { RobotManagement } from './components/RobotManagement';
+import { BuildingSelector } from './components/BuildingSelector';
 import { useBuildingManager } from './hooks/useBuildingManager';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
   const [selectedMenu, setSelectedMenu] = useState('building');
   const {
     building,
+    buildingCollection,
     messages,
     isProcessing,
     sendMessage,
@@ -25,6 +27,7 @@ function App() {
     deleteFixture,
     updateBuilding,
     clearBuilding,
+    switchToBuilding,
   } = useBuildingManager();
 
   const [uploadModal, setUploadModal] = useState<{
@@ -49,7 +52,7 @@ function App() {
   const [isChatOpen, setIsChatOpen] = useState(false);
 
   const toggleSidebar = () => {
-    setSidebarCollapsed(sidebarCollapsed);
+    setSidebarCollapsed(!sidebarCollapsed);
   };
 
   const handleLogin = () => {
@@ -58,7 +61,6 @@ function App() {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    // Note: Building data persists across logins - only cleared explicitly
   };
 
   const handleComponentClick = (type: 'restroom' | 'corridor', floorId: string, componentId: string) => {
@@ -95,7 +97,6 @@ function App() {
   const handleUpload = (file: File) => {
     uploadMap(uploadModal.type, uploadModal.floorId, uploadModal.componentId, file);
     
-    // Update the modal state to show the newly uploaded map
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
@@ -109,7 +110,6 @@ function App() {
 
   const handleUploadFixture = (file: File) => {
     uploadFixture(uploadModal.floorId, uploadModal.componentId, file);
-    // Update the modal state to reflect the new fixture
     setUploadModal(prev => ({
       ...prev,
       existingFixture: URL.createObjectURL(file)
@@ -148,6 +148,16 @@ function App() {
     setSelectedMenu(menu);
   };
 
+  const handleSelectBuilding = (buildingId: string) => {
+    switchToBuilding(buildingId);
+  };
+
+  const handleCreateNewBuilding = () => {
+    setIsChatOpen(true);
+    // Optionally add a message to guide the user
+    sendMessage('help me create a new building');
+  };
+
   const renderMainContent = () => {
     switch (selectedMenu) {
       case 'building':
@@ -155,9 +165,21 @@ function App() {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-white mb-2">Building Overview</h2>
-              <p className="text-slate-400">
+              <p className="text-slate-400 mb-4">
                 Interactive view of your building. Click on components to upload 2D maps. Use the chat assistant for configuration help.
               </p>
+
+              {/* Building Selector */}
+              {buildingCollection.buildings.length > 0 && (
+                <div className="mb-6">
+                  <BuildingSelector
+                    buildings={buildingCollection.buildings}
+                    activeBuilding={buildingCollection.activeBuilding}
+                    onSelectBuilding={handleSelectBuilding}
+                    onCreateNew={handleCreateNewBuilding}
+                  />
+                </div>
+              )}
             </div>
             
             <BuildingVisualization
@@ -245,43 +267,42 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-       <header className="bg-slate-900 border-b border-slate-800 shadow-lg">
-  <div className="px-4 sm:px-6 lg:px-8">
-    <div className="flex justify-between items-center h-16">
-      <div className="flex items-center space-x-4">
-        {/* Replace Building icon with logo */}
-        <div className="bg-white p-2 rounded-lg">
-          <img
-            src="/logo2.png"
-            alt="Site Wise Logo"
-            className="w-10 h-10 rounded-md object-contain"
-          />
-        </div>
+        <header className="bg-slate-900 border-b border-slate-800 shadow-lg">
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-4">
+                <div className="bg-white p-2 rounded-lg">
+                  <img
+                    src="/logo2.png"
+                    alt="Site Wise Logo"
+                    className="w-10 h-10 rounded-md object-contain"
+                  />
+                </div>
 
-        <div>
-          <h1 className="text-xl font-bold text-white">Site Wise</h1>
-          <p className="text-sm text-slate-400">Dynamic Site Manager</p>
-        </div>
-      </div>
+                <div>
+                  <h1 className="text-xl font-bold text-white">Site Wise</h1>
+                  <p className="text-sm text-slate-400">Dynamic Site Manager</p>
+                </div>
+              </div>
 
-      <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2 text-sm text-slate-400">
-          <Users className="h-4 w-4" />
-          <span>Building Assistant</span>
-        </div>
-        <div className="h-8 w-px bg-slate-700"></div>
-        <button
-          onClick={handleLogout}
-          className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-          title="Logout"
-        >
-          <LogOut className="h-4 w-4" />
-          <span className="text-sm">Logout</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</header>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2 text-sm text-slate-400">
+                  <Users className="h-4 w-4" />
+                  <span>Building Assistant</span>
+                </div>
+                <div className="h-8 w-px bg-slate-700"></div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="text-sm">Logout</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
 
         {/* Main Content */}
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">

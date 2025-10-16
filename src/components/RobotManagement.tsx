@@ -24,7 +24,9 @@ import {
   X,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Mic,
+  MicOff,
 } from "lucide-react";
 
 /** ----- Types ----- */
@@ -86,7 +88,7 @@ function computeNextRun(
 /** ----- Component ----- */
 export const RobotManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<
-     "history" | "schedules" | "monitoring" | "reports"
+    "history" | "schedules" | "monitoring" | "reports"
   >("history");
   const [chatMessage, setChatMessage] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -94,6 +96,7 @@ export const RobotManagement: React.FC = () => {
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [tabChatMessages, setTabChatMessages] = useState<RobotMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef(activeTab);
 
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
@@ -108,6 +111,9 @@ export const RobotManagement: React.FC = () => {
     time: "09:00",
     isActive: true,
   });
+
+  const [isListening, setIsListening] = useState(false);
+  const [recognition, setRecognition] = useState<any>(null);
 
   // Mock data
   const [robots] = useState<Robot[]>([
@@ -177,6 +183,10 @@ export const RobotManagement: React.FC = () => {
     scrollToBottom();
   }, [messages, tabChatMessages]);
 
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
   /** ----- Messaging ----- */
   const handleSendTabMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,8 +205,11 @@ export const RobotManagement: React.FC = () => {
 
     // Generate context-aware response
     setTimeout(() => {
-      const responseContent = generateTabSpecificResponse(userMessage.content, activeTab);
-      
+      const responseContent = generateTabSpecificResponse(
+        userMessage.content,
+        activeTab
+      );
+
       const robotResponse: RobotMessage = {
         id: (Date.now() + 1).toString(),
         type: "robot",
@@ -204,68 +217,259 @@ export const RobotManagement: React.FC = () => {
         timestamp: new Date(),
         robotId: selectedRobot !== "all" ? selectedRobot : robots[0]?.id,
       };
-      
+
       setTabChatMessages((prev) => [...prev, robotResponse]);
       setIsTabChatProcessing(false);
     }, 1500);
   };
 
-  /** ----- Context-aware response generation ----- */
-  const generateTabSpecificResponse = (userMessage: string, tab: string): string => {
+  /** ----- Context-aware response generation with ACTIONS ----- */
+  const generateTabSpecificResponse = (
+    userMessage: string,
+    tab: string
+  ): string => {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     switch (tab) {
       case "history":
-        if (lowerMessage.includes("recent") || lowerMessage.includes("latest")) {
-          return `Here are the recent activities:\n\n• CleanBot Alpha completed cleaning on Floor 3 at ${new Date(Date.now() - 1800000).toLocaleTimeString()}\n• System initialized with 3 robots at ${new Date(Date.now() - 3600000).toLocaleTimeString()}\n\nWould you like details about a specific robot or time period?`;
+        if (
+          lowerMessage.includes("recent") ||
+          lowerMessage.includes("latest")
+        ) {
+          return `Here are the recent activities:\n\n• CleanBot Alpha completed cleaning on Floor 3 at ${new Date(
+            Date.now() - 1800000
+          ).toLocaleTimeString()}\n• System initialized with 3 robots at ${new Date(
+            Date.now() - 3600000
+          ).toLocaleTimeString()}\n\nWould you like details about a specific robot or time period?`;
         }
-        if (lowerMessage.includes("cleanbot alpha") || lowerMessage.includes("robot-1")) {
+        if (
+          lowerMessage.includes("cleanbot alpha") ||
+          lowerMessage.includes("robot-1")
+        ) {
           return `CleanBot Alpha History:\n\n• Status: Online\n• Last Activity: Cleaning task completed on Floor 3\n• Battery: 85%\n• Location: Floor 3 - Corridor A\n\nThis robot has been performing well with consistent cleaning schedules.`;
         }
-        if (lowerMessage.includes("today") || lowerMessage.includes("activities")) {
+        if (
+          lowerMessage.includes("today") ||
+          lowerMessage.includes("activities")
+        ) {
           return `Today's Robot Activities:\n\n• 09:00 - CleanBot Alpha started daily cleaning routine\n• 10:30 - CleanBot Beta began security patrol\n• 14:15 - CleanBot Gamma entered charging mode\n• 15:45 - CleanBot Alpha completed Floor 3 cleaning\n\nAll robots are operating within normal parameters.`;
         }
         return `I can help you with robot history. Ask me about:\n• "Recent activities"\n• "CleanBot Alpha history"\n• "Today's activities"\n• "Robot performance"`;
-        
+
       case "schedules":
-        if (lowerMessage.includes("active") || lowerMessage.includes("running")) {
-          return `Active Schedules:\n\n• Daily Floor Cleaning (CleanBot Alpha)\n  - Time: 09:00\n  - Next Run: ${new Date(Date.now() + 86400000).toLocaleDateString()}\n  - Status: Active\n\nWould you like to create a new schedule or modify existing ones?`;
-        }
-        if (lowerMessage.includes("create") || lowerMessage.includes("new")) {
-          return `To create a new schedule, you can:\n\n1. Click the "New Schedule" button above\n2. Or tell me: "Create cleaning schedule for CleanBot Beta at 2 PM daily"\n\nWhat type of schedule would you like to create?`;
-        }
-        if (lowerMessage.includes("next") || lowerMessage.includes("upcoming")) {
-          return `Upcoming Scheduled Tasks:\n\n• Tomorrow 09:00 - Daily Floor Cleaning (CleanBot Alpha)\n• Next Week - Weekly maintenance check\n\nAll schedules are running on time. Need to modify any schedules?`;
-        }
-        return `I can help you manage robot schedules. Ask me about:\n• "Active schedules"\n• "Create new schedule"\n• "Upcoming tasks"\n• "Schedule for specific robot"`;
-        
+        return handleScheduleCommand(userMessage);
+
       case "monitoring":
-        if (lowerMessage.includes("status") || lowerMessage.includes("online")) {
-          return `Current Robot Status:\n\n• CleanBot Alpha: Online (85% battery)\n• CleanBot Beta: Busy (92% battery)\n• CleanBot Gamma: Charging (45% battery)\n\nAll robots have strong connection signals. Any specific robot you'd like to monitor?`;
-        }
-        if (lowerMessage.includes("battery") || lowerMessage.includes("power")) {
-          return `Battery Levels:\n\n• CleanBot Alpha: 85% (Good)\n• CleanBot Beta: 92% (Excellent)\n• CleanBot Gamma: 45% (Charging)\n\nCleanBot Gamma is currently charging and will be ready in ~2 hours.`;
-        }
-        if (lowerMessage.includes("location") || lowerMessage.includes("where")) {
-          return `Robot Locations:\n\n• CleanBot Alpha: Floor 3 - Corridor A\n• CleanBot Beta: Floor 1 - Main Entrance\n• CleanBot Gamma: Charging Station B\n\nAll robots are in their expected locations.`;
-        }
-        return `I can help you monitor robots. Ask me about:\n• "Robot status"\n• "Battery levels"\n• "Robot locations"\n• "Connection status"`;
-        
+        return handleMonitoringCommand(userMessage);
+
       case "reports":
-        if (lowerMessage.includes("performance") || lowerMessage.includes("stats")) {
-          return `System Performance Summary:\n\n• Uptime: 99.8%\n• Task Success Rate: 94.2%\n• Average Response Time: 1.2s\n• Active Robots: 3/3\n\nPerformance is excellent across all metrics. Need detailed analysis?`;
-        }
-        if (lowerMessage.includes("week") || lowerMessage.includes("weekly")) {
-          return `Weekly Report Summary:\n\n• Total Tasks Completed: 156\n• Average Battery Usage: 67%\n• Maintenance Alerts: 2 (resolved)\n• Efficiency Rating: 94.2%\n\nThis week showed improved efficiency compared to last week.`;
-        }
-        if (lowerMessage.includes("activity") || lowerMessage.includes("usage")) {
-          return `Robot Activity Analysis:\n\n• Most Active: CleanBot Alpha (45 hours)\n• Peak Usage Time: 9 AM - 5 PM\n• Maintenance Hours: 12 hours total\n• Idle Time: 8% average\n\nOptimal usage patterns detected.`;
-        }
-        return `I can help you with reports and analytics. Ask me about:\n• "Performance stats"\n• "Weekly reports"\n• "Activity analysis"\n• "Efficiency metrics"`;
-        
+        return handleReportsCommand(userMessage);
+
       default:
         return `I'm here to help with robot management. What would you like to know about?`;
     }
+  };
+
+  /** ----- Schedule Command Handler ----- */
+  const handleScheduleCommand = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+
+    // CREATE schedule
+    if (
+      lowerMessage.includes("create") ||
+      lowerMessage.includes("add") ||
+      lowerMessage.includes("new")
+    ) {
+      const robotName = extractRobotName(lowerMessage);
+      const scheduleType = extractScheduleType(lowerMessage);
+      const time = extractTime(lowerMessage);
+      const frequency = extractFrequency(lowerMessage);
+
+      const robotId =
+        robots.find((r) => r.name.toLowerCase().includes(robotName))?.id ||
+        robots[0]?.id;
+
+      const newSchedule: Schedule = {
+        id: `schedule-${Date.now()}`,
+        name: `${
+          scheduleType.charAt(0).toUpperCase() + scheduleType.slice(1)
+        } Task`,
+        robotId: robotId || "",
+        type: scheduleType as any,
+        frequency: frequency as any,
+        time: time,
+        isActive: true,
+        nextRun: computeNextRun(frequency as any, time),
+      };
+
+      setSchedules((prev) => [newSchedule, ...prev]);
+      return `✅ Schedule created successfully!\n\n• Task: ${
+        newSchedule.name
+      }\n• Robot: ${
+        robots.find((r) => r.id === robotId)?.name
+      }\n• Time: ${time}\n• Frequency: ${frequency}\n• Status: Active`;
+    }
+
+    // DELETE schedule
+    if (
+      lowerMessage.includes("delete") ||
+      lowerMessage.includes("remove") ||
+      lowerMessage.includes("cancel")
+    ) {
+      const scheduleIndex = extractScheduleIndex(lowerMessage);
+      if (schedules.length > scheduleIndex) {
+        const deletedSchedule = schedules[scheduleIndex];
+        setSchedules((prev) => prev.filter((_, idx) => idx !== scheduleIndex));
+        return `🗑️ Schedule deleted successfully!\n\n• "${deletedSchedule.name}" has been removed from the schedule list.`;
+      }
+      return `❌ Could not find that schedule. Say "show schedules" to see all schedules.`;
+    }
+
+    // PAUSE/DISABLE schedule
+    if (
+      lowerMessage.includes("pause") ||
+      lowerMessage.includes("disable") ||
+      lowerMessage.includes("stop")
+    ) {
+      const scheduleIndex = extractScheduleIndex(lowerMessage);
+      if (schedules.length > scheduleIndex) {
+        setSchedules((prev) =>
+          prev.map((s, idx) =>
+            idx === scheduleIndex ? { ...s, isActive: false } : s
+          )
+        );
+        return `⏸️ Schedule paused successfully!\n\n• The schedule has been disabled and will not run.`;
+      }
+      return `❌ Could not find that schedule. Say "show schedules" to see all schedules.`;
+    }
+
+    // ACTIVATE/ENABLE schedule
+    if (
+      lowerMessage.includes("activate") ||
+      lowerMessage.includes("enable") ||
+      lowerMessage.includes("resume")
+    ) {
+      const scheduleIndex = extractScheduleIndex(lowerMessage);
+      if (schedules.length > scheduleIndex) {
+        setSchedules((prev) =>
+          prev.map((s, idx) =>
+            idx === scheduleIndex ? { ...s, isActive: true } : s
+          )
+        );
+        return `▶️ Schedule activated successfully!\n\n• The schedule is now active and will run as planned.`;
+      }
+      return `❌ Could not find that schedule. Say "show schedules" to see all schedules.`;
+    }
+
+    // SHOW/LIST schedules
+    if (
+      lowerMessage.includes("show") ||
+      lowerMessage.includes("list") ||
+      lowerMessage.includes("all")
+    ) {
+      if (schedules.length === 0) {
+        return `No schedules found. Say "create cleaning schedule" to add one.`;
+      }
+      const scheduleList = schedules
+        .map(
+          (s, idx) =>
+            `${idx + 1}. ${s.name} - ${
+              robots.find((r) => r.id === s.robotId)?.name
+            } at ${s.time} (${s.frequency}) - ${
+              s.isActive ? "✅ Active" : "⏸️ Paused"
+            }`
+        )
+        .join("\n");
+      return `📋 Current Schedules:\n\n${scheduleList}\n\nSay "delete schedule 1" or "pause schedule 2" to modify.`;
+    }
+
+    return `I can help you manage schedules. Try:\n• "Create cleaning schedule at 9 AM daily"\n• "Show all schedules"\n• "Delete schedule 1"\n• "Pause schedule 2"`;
+  };
+
+  /** ----- Monitoring Command Handler ----- */
+  const handleMonitoringCommand = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+
+    if (lowerMessage.includes("status") || lowerMessage.includes("online")) {
+      return `Current Robot Status:\n\n• CleanBot Alpha: Online (85% battery)\n• CleanBot Beta: Busy (92% battery)\n• CleanBot Gamma: Charging (45% battery)\n\nAll robots have strong connection signals.`;
+    }
+    if (lowerMessage.includes("battery") || lowerMessage.includes("power")) {
+      return `Battery Levels:\n\n• CleanBot Alpha: 85% (Good)\n• CleanBot Beta: 92% (Excellent)\n• CleanBot Gamma: 45% (Charging)\n\nCleanBot Gamma is currently charging and will be ready in ~2 hours.`;
+    }
+    if (lowerMessage.includes("location") || lowerMessage.includes("where")) {
+      return `Robot Locations:\n\n• CleanBot Alpha: Floor 3 - Corridor A\n• CleanBot Beta: Floor 1 - Main Entrance\n• CleanBot Gamma: Charging Station B\n\nAll robots are in their expected locations.`;
+    }
+    return `I can help you monitor robots. Ask me about:\n• "Robot status"\n• "Battery levels"\n• "Robot locations"`;
+  };
+
+  /** ----- Reports Command Handler ----- */
+  const handleReportsCommand = (userMessage: string): string => {
+    const lowerMessage = userMessage.toLowerCase();
+
+    if (
+      lowerMessage.includes("performance") ||
+      lowerMessage.includes("stats")
+    ) {
+      return `System Performance Summary:\n\n• Uptime: 99.8%\n• Task Success Rate: 94.2%\n• Average Response Time: 1.2s\n• Active Robots: 3/3\n\nPerformance is excellent across all metrics.`;
+    }
+    if (lowerMessage.includes("week") || lowerMessage.includes("weekly")) {
+      return `Weekly Report Summary:\n\n• Total Tasks Completed: 156\n• Average Battery Usage: 67%\n• Maintenance Alerts: 2 (resolved)\n• Efficiency Rating: 94.2%\n\nThis week showed improved efficiency compared to last week.`;
+    }
+    if (lowerMessage.includes("activity") || lowerMessage.includes("usage")) {
+      return `Robot Activity Analysis:\n\n• Most Active: CleanBot Alpha (45 hours)\n• Peak Usage Time: 9 AM - 5 PM\n• Maintenance Hours: 12 hours total\n• Idle Time: 8% average\n\nOptimal usage patterns detected.`;
+    }
+    return `I can help you with reports. Ask me about:\n• "Performance stats"\n• "Weekly reports"\n• "Activity analysis"`;
+  };
+
+  /** ----- Helper Functions for Parsing ----- */
+  const extractRobotName = (message: string): string => {
+    if (message.includes("alpha")) return "alpha";
+    if (message.includes("beta")) return "beta";
+    if (message.includes("gamma")) return "gamma";
+    return "alpha";
+  };
+
+  const extractScheduleType = (message: string): string => {
+    if (message.includes("clean")) return "cleaning";
+    if (message.includes("security") || message.includes("patrol"))
+      return "security";
+    if (message.includes("maintenance") || message.includes("maintain"))
+      return "maintenance";
+    return "cleaning";
+  };
+
+  const extractTime = (message: string): string => {
+    const timeMatch = message.match(/(\d{1,2})\s*(am|pm|AM|PM)/);
+    if (timeMatch) {
+      let hour = parseInt(timeMatch[1]);
+      const period = timeMatch[2].toLowerCase();
+      if (period === "pm" && hour < 12) hour += 12;
+      if (period === "am" && hour === 12) hour = 0;
+      return `${hour.toString().padStart(2, "0")}:00`;
+    }
+    const time24Match = message.match(/(\d{1,2}):(\d{2})/);
+    if (time24Match) {
+      return `${time24Match[1].padStart(2, "0")}:${time24Match[2]}`;
+    }
+    return "09:00";
+  };
+
+  const extractFrequency = (message: string): string => {
+    if (message.includes("daily") || message.includes("every day"))
+      return "daily";
+    if (message.includes("weekly") || message.includes("week")) return "weekly";
+    if (message.includes("hourly") || message.includes("hour")) return "hourly";
+    return "daily";
+  };
+
+  const extractScheduleIndex = (message: string): number => {
+    const match = message.match(/schedule\s+(\d+)/);
+    if (match) return parseInt(match[1]) - 1;
+    const firstMatch = message.match(/first/);
+    if (firstMatch) return 0;
+    const lastMatch = message.match(/last/);
+    if (lastMatch) return schedules.length - 1;
+    return 0;
   };
 
   /** ----- Schedules UI handlers ----- */
@@ -335,6 +539,122 @@ export const RobotManagement: React.FC = () => {
     setSchedules((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const handleSendVoiceMessage = async (message: string) => {
+    if (!message.trim() || isTabChatProcessing) return;
+
+    const userMessage: RobotMessage = {
+      id: Date.now().toString(),
+      type: "user",
+      content: message,
+      timestamp: new Date(),
+    };
+
+    setTabChatMessages((prev) => [...prev, userMessage]);
+    setTabChatInput("");
+    setIsTabChatProcessing(true);
+
+    setTimeout(() => {
+      const responseContent = generateTabSpecificResponse(message, activeTab);
+
+      const robotResponse: RobotMessage = {
+        id: (Date.now() + 1).toString(),
+        type: "robot",
+        content: responseContent,
+        timestamp: new Date(),
+        robotId: selectedRobot !== "all" ? selectedRobot : robots[0]?.id,
+      };
+
+      setTabChatMessages((prev) => [...prev, robotResponse]);
+      setIsTabChatProcessing(false);
+    }, 1500);
+  };
+
+  /** ----- Voice Recognition ----- */
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      ("webkitSpeechRecognition" in window || "SpeechRecognition" in window)
+    ) {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+      const recognitionInstance = new SpeechRecognition();
+
+      recognitionInstance.continuous = false;
+      recognitionInstance.interimResults = false;
+      recognitionInstance.lang = "en-US";
+
+      recognitionInstance.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setTabChatInput(transcript);
+        setIsListening(false);
+
+        setTimeout(() => {
+          if (!isTabChatProcessing && transcript.trim()) {
+            const userMsg: RobotMessage = {
+              id: Date.now().toString(),
+              type: "user",
+              content: transcript,
+              timestamp: new Date(),
+            };
+
+            setTabChatMessages((prev) => [...prev, userMsg]);
+            setTabChatInput("");
+            setIsTabChatProcessing(true);
+
+            setTimeout(() => {
+              const responseContent = generateTabSpecificResponse(
+                transcript,
+                activeTabRef.current
+              );
+
+              const robotResponse: RobotMessage = {
+                id: (Date.now() + 1).toString(),
+                type: "robot",
+                content: responseContent,
+                timestamp: new Date(),
+                robotId:
+                  selectedRobot !== "all" ? selectedRobot : robots[0]?.id,
+              };
+
+              setTabChatMessages((prev) => [...prev, robotResponse]);
+              setIsTabChatProcessing(false);
+            }, 1500);
+          }
+        }, 100);
+      };
+
+      recognitionInstance.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognitionInstance.onend = () => {
+        setIsListening(false);
+      };
+
+      setRecognition(recognitionInstance);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleVoiceRecognition = () => {
+    if (!recognition) {
+      alert(
+        "Voice recognition is not supported in your browser. Please use Chrome, Edge, or Safari."
+      );
+      return;
+    }
+
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+    } else {
+      setIsListening(true);
+      recognition.start();
+    }
+  };
+
   /** ----- Robot helpers ----- */
   const getStatusColor = (status: Robot["status"]) => {
     switch (status) {
@@ -371,11 +691,17 @@ export const RobotManagement: React.FC = () => {
     switch (activeTab) {
       case "schedules":
         return (
-          <div className="space-y-6 pb-20">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold text-white">
-                Robot Schedules
-              </h3>
+              <div>
+                <h3 className="text-xl font-semibold text-white">
+                  Robot Schedules
+                </h3>
+                <p className="text-slate-400 text-sm mt-1">
+                  <Mic className="inline h-4 w-4 mr-1 text-cyan-500" />
+                  Use voice commands to create, edit, or delete schedules
+                </p>
+              </div>
               <button
                 onClick={openNewSchedule}
                 className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
@@ -385,91 +711,126 @@ export const RobotManagement: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {schedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className="bg-slate-800 rounded-lg p-6 border border-slate-700"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-white font-medium">{schedule.name}</h4>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => openEditSchedule(schedule)}
-                        className="text-blue-400 hover:text-blue-300"
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSchedule(schedule.id)}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Robot:</span>
-                      <span className="text-white">
-                        {robots.find((r) => r.id === schedule.robotId)?.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Type:</span>
-                      <span className="text-white capitalize">
-                        {schedule.type}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Frequency:</span>
-                      <span className="text-white capitalize">
-                        {schedule.frequency}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Time:</span>
-                      <span className="text-white">{schedule.time}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Next Run:</span>
-                      <span className="text-white">
-                        {schedule.nextRun.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Status:</span>
+            {schedules.length === 0 ? (
+              <div className="bg-slate-800/50 rounded-lg border border-slate-700 p-12 text-center">
+                <Calendar className="h-16 w-16 text-slate-600 mx-auto mb-4" />
+                <h4 className="text-xl font-semibold text-white mb-2">
+                  No Schedules Yet
+                </h4>
+                <p className="text-slate-400 mb-6">
+                  Create your first schedule using the button above or voice
+                  commands below
+                </p>
+                <div className="bg-slate-900/50 rounded-lg p-4 text-left max-w-md mx-auto">
+                  <p className="text-slate-300 text-sm mb-2">Try saying:</p>
+                  <ul className="text-slate-400 text-sm space-y-1">
+                    <li>• "Create cleaning schedule at 9 AM daily"</li>
+                    <li>• "Add security patrol at 2 PM weekly"</li>
+                    <li>• "New maintenance task at 6 PM daily"</li>
+                  </ul>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {schedules.map((schedule) => (
+                  <div
+                    key={schedule.id}
+                    className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-slate-600 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-white font-medium">
+                        {schedule.name}
+                      </h4>
                       <div className="flex items-center space-x-2">
-                        {schedule.isActive ? (
-                          <Play className="h-4 w-4 text-green-400" />
-                        ) : (
-                          <Pause className="h-4 w-4 text-red-400" />
-                        )}
-                        <span
-                          className={
-                            schedule.isActive
-                              ? "text-green-400"
-                              : "text-red-400"
-                          }
+                        <button
+                          onClick={() => openEditSchedule(schedule)}
+                          className="text-blue-400 hover:text-blue-300 transition-colors"
                         >
-                          {schedule.isActive ? "Active" : "Paused"}
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-sm">Robot:</span>
+                        <span className="text-white font-medium">
+                          {robots.find((r) => r.id === schedule.robotId)?.name}
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-sm">Type:</span>
+                        <span className="text-white capitalize">
+                          {schedule.type}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-sm">
+                          Frequency:
+                        </span>
+                        <span className="text-white capitalize">
+                          {schedule.frequency}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-sm">Time:</span>
+                        <span className="text-white font-mono">
+                          {schedule.time}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-sm">
+                          Next Run:
+                        </span>
+                        <span className="text-white text-sm">
+                          {schedule.nextRun.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                        <span className="text-slate-400 text-sm">Status:</span>
+                        <div className="flex items-center space-x-2">
+                          {schedule.isActive ? (
+                            <Play className="h-4 w-4 text-green-400" />
+                          ) : (
+                            <Pause className="h-4 w-4 text-red-400" />
+                          )}
+                          <span
+                            className={`font-medium ${
+                              schedule.isActive
+                                ? "text-green-400"
+                                : "text-red-400"
+                            }`}
+                          >
+                            {schedule.isActive ? "Active" : "Paused"}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 
       case "monitoring":
         return (
-          <div className="space-y-6 pb-20">
-            <h3 className="text-xl font-semibold text-white">
-              Live System Status
-            </h3>
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xl font-semibold text-white">
+                Live System Status
+              </h3>
+              <p className="text-slate-400 text-sm mt-1">
+                <Mic className="inline h-4 w-4 mr-1 text-cyan-500" />
+                Ask about robot status, battery levels, or locations
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {robots.map((robot) => (
@@ -548,10 +909,16 @@ export const RobotManagement: React.FC = () => {
 
       case "reports":
         return (
-          <div className="space-y-6 pb-20">
-            <h3 className="text-xl font-semibold text-white">
-              Charts & Reports
-            </h3>
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xl font-semibold text-white">
+                Charts & Reports
+              </h3>
+              <p className="text-slate-400 text-sm mt-1">
+                <Mic className="inline h-4 w-4 mr-1 text-cyan-500" />
+                Request performance stats, weekly reports, or activity analysis
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
@@ -620,43 +987,29 @@ export const RobotManagement: React.FC = () => {
 
       case "history":
         return (
-          <div className="space-y-6 pb-20">
-            <h3 className="text-xl font-semibold text-white">Robot History</h3>
-
-            <div className="bg-slate-800 rounded-lg border border-slate-700">
-              <div className="p-4 border-b border-slate-700">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-white font-medium">Recent Activities</h4>
-                  <select className="bg-slate-700 text-white border border-slate-600 rounded px-3 py-1 text-sm">
-                    <option>All Robots</option>
-                    {robots.map((robot) => (
-                      <option key={robot.id} value={robot.id}>
-                        {robot.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          <div className="space-y-6">
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-600/20 mb-4">
+                <Bot className="h-8 w-8 text-blue-500" />
               </div>
-
-              <div className="p-4 space-y-4">
-                {messages
-                  .filter((m) => m.type === "robot" || m.type === "system")
-                  .map((message) => (
-                    <div
-                      key={message.id}
-                      className="flex items-start space-x-3"
-                    >
-                      <div className="bg-blue-600 p-2 rounded-full">
-                        <Bot className="h-4 w-4 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-white text-sm">{message.content}</p>
-                        <p className="text-slate-400 text-xs mt-1">
-                          {message.timestamp.toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+              <h3 className="text-2xl font-bold text-white mb-3">
+                Robot History & Information
+              </h3>
+              <p className="text-slate-400 text-lg mb-6 max-w-2xl mx-auto">
+                Use the microphone button below to ask questions about robot
+                activities, performance, and history.
+              </p>
+              <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-6 max-w-2xl mx-auto text-left">
+                <h4 className="text-white font-semibold mb-3 flex items-center">
+                  <Mic className="h-5 w-5 mr-2 text-cyan-500" />
+                  Try asking:
+                </h4>
+                <ul className="text-slate-300 space-y-2">
+                  <li>• "Show recent activities"</li>
+                  <li>• "What did CleanBot Alpha do today?"</li>
+                  <li>• "Show robot performance"</li>
+                  <li>• "Tell me about CleanBot Beta's history"</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -709,67 +1062,89 @@ export const RobotManagement: React.FC = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="bg-slate-900 rounded-xl shadow-2xl p-6">
-        {/* Chat Messages Display */}
+      <div className="bg-slate-900 rounded-xl shadow-2xl p-6 mb-4">
+        {renderTabContent()}
+
+        {/* Chat Conversation Section */}
         {tabChatMessages.length > 0 && (
-          <div className="mb-6 space-y-4 max-h-60 overflow-y-auto">
-            {tabChatMessages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.type === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
+          <div className="bg-slate-900 rounded-xl shadow-2xl p-6 mb-20 mt-1">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+              <MessageSquare className="h-5 w-5 mr-2 text-cyan-500" />
+              Conversation History
+            </h3>
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              {tabChatMessages.map((message) => (
                 <div
-                  className={`max-w-md px-4 py-3 rounded-lg ${
-                    message.type === 'user'
-                      ? 'bg-cyan-600 text-white'
-                      : 'bg-slate-800 text-slate-200 border border-slate-700'
+                  key={message.id}
+                  className={`flex ${
+                    message.type === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  <p
-                    className={`text-xs mt-1 ${
-                      message.type === 'user'
-                        ? 'text-cyan-200'
-                        : 'text-slate-500'
+                  <div
+                    className={`max-w-md px-4 py-3 rounded-lg ${
+                      message.type === "user"
+                        ? "bg-cyan-600 text-white"
+                        : "bg-slate-800 text-slate-200 border border-slate-700"
                     }`}
                   >
-                    {message.timestamp.toLocaleTimeString('en-US', { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </p>
-                </div>
-              </div>
-            ))}
-            
-            {isTabChatProcessing && (
-              <div className="flex justify-start">
-                <div className="bg-slate-800 text-slate-200 px-4 py-3 rounded-lg border border-slate-700">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    </div>
-                    <span className="text-sm">Processing...</span>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {message.content}
+                    </p>
+                    <p
+                      className={`text-xs mt-1 ${
+                        message.type === "user"
+                          ? "text-cyan-200"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {message.timestamp.toLocaleTimeString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
                   </div>
                 </div>
-              </div>
-            )}
-            
-            <div ref={messagesEndRef} />
+              ))}
+              {isTabChatProcessing && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-800 text-slate-200 px-4 py-3 rounded-lg border border-slate-700">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-cyan-500 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                      <span className="text-sm">Processing...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+            </div>
           </div>
         )}
-        
-        {renderTabContent()}
-      </div>
 
-      {/* Fixed Chat Input at Bottom */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-700 p-4 z-40">
-        <div className="max-w-7xl mx-auto">
-          <form onSubmit={handleSendTabMessage} className="flex items-center space-x-3">
+        {/* Chat Input Section */}
+        <div className="bg-slate-900 rounded-xl shadow-2xl p-4 border border-slate-700 mt-5">
+          {isListening && (
+            <div className="mb-2 flex items-center justify-center space-x-2 text-red-500 animate-pulse">
+              <Mic className="h-4 w-4" />
+              <span className="text-sm font-medium">
+                Listening... Speak now
+              </span>
+            </div>
+          )}
+          <form
+            onSubmit={handleSendTabMessage}
+            className="flex items-center space-x-3"
+          >
             <div className="flex-1 relative">
               <input
                 type="text"
@@ -779,22 +1154,23 @@ export const RobotManagement: React.FC = () => {
                 className="w-full bg-slate-800 text-white placeholder-slate-400 border border-slate-600 rounded-full px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                 disabled={isTabChatProcessing}
               />
-              {/* Dummy Mic Button */}
               <button
                 type="button"
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300 transition-colors"
-                title="Voice input (coming soon)"
+                onClick={toggleVoiceRecognition}
+                disabled={isTabChatProcessing}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors ${
+                  isListening
+                    ? "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+                    : "bg-cyan-600 hover:bg-cyan-700 text-white"
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd" />
-                </svg>
+                <Mic className="h-4 w-4" />
               </button>
             </div>
             <button
               type="submit"
-              disabled={!tabChatInput.trim() || isTabChatProcessing}
-              className="bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-full p-3 transition-colors flex items-center justify-center"
-              title="Send message"
+              disabled={isTabChatProcessing || !tabChatInput.trim()}
+              className="bg-cyan-600 hover:bg-cyan-700 text-white p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="h-5 w-5" />
             </button>
